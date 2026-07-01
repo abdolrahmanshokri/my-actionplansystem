@@ -106,7 +106,7 @@ class AppRoot extends StatelessWidget {
         // هر بار که تنظیمات تغییر کند (init، لاگین، آپلود favicon)،
         // آیکون تب مرورگر را به‌روز می‌کنیم تا همیشه هماهنگ بماند.
         _applyFaviconIfSet();
-        // آیا الان حالت شب (تاریک) فعال است؟ از مغز می‌پرسیم.
+        // آیا الان حالت شب (تاریک) فعال است? از مغز می‌پرسیم.
         final bool isDark = SettingsManager.instance.isDarkMode;
 
         // رنگ‌های فصل فعلی را می‌گیریم.
@@ -138,7 +138,7 @@ class AppRoot extends StatelessWidget {
           theme: ThemeData(
             brightness: Brightness.light,
             primaryColor: sc.primary,
-            fontFamily: 'sans-serif',
+            fontFamily: SettingsManager.instance.currentFontFamily,
             colorScheme: ColorScheme.fromSeed(
               seedColor: sc.primary,
               brightness: Brightness.light,
@@ -150,7 +150,7 @@ class AppRoot extends StatelessWidget {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: sc.primary,
-            fontFamily: 'sans-serif',
+            fontFamily: SettingsManager.instance.currentFontFamily,
             colorScheme: ColorScheme.fromSeed(
               seedColor: sc.primary,
               brightness: Brightness.dark,
@@ -333,7 +333,7 @@ class _HomeShellState extends State<HomeShell> {
   // PreferredSizeWidget نوعی است که appBar انتظارش را دارد.
   PreferredSizeWidget _buildTopBar(bool isMobile) {
     return AppBar(
-      // رنگ پس‌زمینه‌ی نوار: همان سرمه‌ای تیره.
+      // رنگ پس‌زمینه ی نوار: همان سرمه‌ای تیره.
       backgroundColor: _primaryColor,
 
       // ارتفاع نوار.

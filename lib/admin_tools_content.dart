@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:file_saver/file_saver.dart';
+import 'package:file_picker/file_picker.dart';
 import 'auth_manager.dart';
 import 'settings_manager.dart';
 import 'api_client.dart';
@@ -48,6 +49,9 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
   final _adServiceUserCtrl = TextEditingController();
   final _adServicePassCtrl = TextEditingController();
   bool _savingAd = false;
+
+  // --- تنظیمات فونت داینامیک ---
+  bool _uploadingFont = false;
 
   @override
   void initState() {
@@ -160,7 +164,6 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
     super.dispose();
   }
 
-  // آپلود تصویر از دستگاه و تبدیل به dataURL (base64)
   Future<String?> _pickImageDataUrl() async {
     final input = html.FileUploadInputElement()
       ..accept = 'image/png,image/jpeg,image/x-icon,image/svg+xml,.ico';
@@ -213,7 +216,6 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
     setState(() {});
   }
 
-  // اعمال favicon روی تب مرورگر
   void _applyFavicon(String dataUrl) {
     if (dataUrl.isEmpty) return;
     final existing =
@@ -227,7 +229,57 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
     html.document.head?.append(link);
   }
 
-  // پیش‌نمایش کوچک تصویر (از dataURL base64)
+  // --- بخش مدیریت فونت اختصاصی ادمین ---
+  Future<void> _uploadCustomFont() async {
+    setState(() => _uploadingFont = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['ttf'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      final fileName = file.name; // استخراج نام فایل آپلودی
+
+      if (bytes == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('خطا در خواندن فایل فونت')));
+        return;
+      }
+
+      final base64String = base64Encode(bytes);
+      final repo = AuthManager.instance.repository;
+      
+      // نام فونت را هم برای ذخیره سازی می‌فرستیم
+      await SettingsManager.instance.saveCustomFont(base64String, fileName, repo.setSetting);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فونت سفارشی با موفقیت ذخیره و اعمال شد ✓')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در آپلود فونت: $e')));
+    } finally {
+      if (mounted) setState(() => _uploadingFont = false);
+    }
+  }
+
+  Future<void> _removeCustomFont() async {
+    final repo = AuthManager.instance.repository;
+    // ارسال نام خالی برای حذف کامل
+    await SettingsManager.instance.saveCustomFont('', '', repo.setSetting);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فونت سفارشی حذف شد؛ سیستم به حالت پیش‌فرض (Vazirmatn) بازگشت.')));
+  }
+
   Widget _imgPreview(String dataUrl) {
     Widget box(Widget child) => Container(
           width: 44,
@@ -539,7 +591,6 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // لوگوی هدر
                   Row(
                     children: [
                       _imgPreview(SettingsManager.instance.headerLogo),
@@ -563,7 +614,6 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
                     ],
                   ),
                   const Divider(height: 24),
-                  // favicon
                   Row(
                     children: [
                       _imgPreview(SettingsManager.instance.browserFavicon),
@@ -589,6 +639,81 @@ class _AdminToolsContentState extends State<AdminToolsContent> {
                 ],
               ),
             ),
+            
+            // ---------------- کارت مدیریت فونت آپدیت شده ----------------
+            const SizedBox(height: 16),
+            Text('فونت اختصاصی سامانه',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: textColor)),
+            const SizedBox(height: 4),
+            Text(
+                'فونت پیش‌فرض سیستم Vazirmatn (آفلاین) است. برای بارگذاری فونت جدید، یک فایل با پسوند ttf انتخاب کنید.',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : const Color(0xFF777777))),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF252D45) : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF3A4468)
+                        : const Color(0xFFE0E0E0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFBA7517).withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBA7517).withOpacity(0.3)),
+                    ),
+                    child: const Icon(Icons.font_download_outlined,
+                        color: Color(0xFFBA7517), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  
+                  // نمایش وضعیت و نام فونت
+                  Expanded(
+                    child: Text(
+                        SettingsManager.instance.currentFontFamily == 'CustomAdminFont'
+                            ? 'فونت اختصاصی آپلود شده: ${SettingsManager.instance.customFontName}' // نام فایل را نشان می‌دهد
+                            : 'فونت پیش‌فرض سیستم (Vazirmatn - غیرقابل حذف) فعال است.',
+                        style: TextStyle(fontSize: 13, color: textColor, fontWeight: FontWeight.w500)),
+                  ),
+                  
+                  ElevatedButton.icon(
+                    onPressed: _uploadingFont ? null : _uploadCustomFont,
+                    icon: _uploadingFont
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.upload, size: 18),
+                    label: const Text('آپلود فونت (ttf)'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: _primary,
+                        foregroundColor: Colors.white),
+                  ),
+                  if (SettingsManager.instance.currentFontFamily == 'CustomAdminFont') ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'بازگشت به فونت پیش‌فرض سیستم',
+                      onPressed: _removeCustomFont,
+                      icon: const Icon(Icons.delete_outline, color: Color(0xFFC0392B)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // -------------------------------------------------------------
+
             const SizedBox(height: 24),
             Text('ورود یکپارچه (SSO)',
                 style: TextStyle(

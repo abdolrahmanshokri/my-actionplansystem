@@ -1,59 +1,26 @@
 // ============================================================
 //  مغز مرکزی تنظیمات (settings_manager.dart)
 // ============================================================
-//  این فایل، «مغز» همه‌ی تنظیمات کاربر است.
-//  هر تنظیمی که کاربر عوض می‌کند (تم شب/روز، فصل، لیست/کاشی و ...)
-//  اینجا نگه داشته می‌شود، خودکار ذخیره می‌شود، و می‌توان آن را
-//  به صورت یک فایل متنی خروجی گرفت (export) یا وارد کرد (import).
-//
-//  چرا یک فایل جداگانه؟ چون می‌خواهیم همه‌ی تنظیمات «یک جا» باشند.
-//  هر بخش از برنامه به این مغز وصل می‌شود، نه اینکه هر کدام جدا
-//  تنظیماتش را نگه دارد. این کار را تمیز و قابل‌گسترش می‌کند.
-// ============================================================
 
-import 'dart:convert'; // برای تبدیل تنظیمات به متن (JSON) و برعکس
+import 'dart:convert'; 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ابزار ذخیره‌سازی
+import 'package:flutter/services.dart'; 
+import 'package:shared_preferences/shared_preferences.dart'; 
+import 'dart:html' as html; // برای رفع مشکل فونت در فایرفاکس
 import 'api_client.dart';
 
-// ============================================================
-//  کلاس SettingsManager
-//  «ChangeNotifier» یعنی این کلاس می‌تواند به بقیه‌ی برنامه
-//  «خبر بدهد» که چیزی عوض شد، تا صفحه خودش را به‌روز کند.
-// ============================================================
 class SettingsManager extends ChangeNotifier {
-  // ----- الگوی تک‌نمونه (Singleton) -----
-  // یعنی در کل برنامه فقط «یک» مغز تنظیمات داریم، نه چندتا.
-  // هر جای برنامه که SettingsManager.instance را صدا بزنیم،
-  // همان یک مغز مشترک را می‌گیریم.
   static final SettingsManager instance = SettingsManager._internal();
   SettingsManager._internal();
 
-  // متغیری برای دسترسی به انبار ذخیره‌سازی دستگاه.
   SharedPreferences? _prefs;
 
-  // ============================================================
-  //  مقادیر تنظیمات
-  //  فعلاً فقط یک تنظیم داریم: حالت تاریک (شب) یا روشن (روز).
-  //  بعداً فصل، لیست/کاشی و بقیه را همین‌جا اضافه می‌کنیم.
-  // ============================================================
-
-  // آیا حالت شب (تاریک) فعال است؟ پیش‌فرض: خیر (یعنی حالت روز).
   bool _isDarkMode = false;
-
-  // این یک «گتر» است؛ یعنی راهی برای خواندن مقدار از بیرون.
   bool get isDarkMode => _isDarkMode;
 
-  // ----- فصل انتخاب‌شده -----
-  // مقدار آن یکی از این چهارتاست: 'spring' (بهار)، 'summer' (تابستان)،
-  // 'autumn' (پاییز)، 'winter' (زمستان).
-  // پیش‌فرض: زمستان (همان سرمه‌ای فعلی برنامه).
   String _season = 'winter';
-
-  // گتر برای خواندن فصل از بیرون.
   String get season => _season;
 
-  // ----- متن‌های قابل‌ویرایش هدر (تنظیمات سازمانی، در دیتابیس) -----
   String _appTitle = 'ثبت پیشرفت اکشن پلن جم';
   String _appSlogan = 'پتروشیمی جم - راهکاری متفاوت';
   String _browserTitle = 'ثبت پیشرفت اکشن پلن';
@@ -64,9 +31,7 @@ class SettingsManager extends ChangeNotifier {
   String get browserTitle => _browserTitle;
   String get systemName => _systemName;
 
-  // ----- تصاویر قابل‌ویرایش (base64، در دیتابیس) -----
-  // لوگوی هدر و آیکون تب مرورگر (favicon). اگر خالی باشند، پیش‌فرض استفاده می‌شود.
-  String _headerLogo = ''; // data URL یا base64 خام
+  String _headerLogo = ''; 
   String _browserFavicon = '';
 
   String get headerLogo => _headerLogo;
@@ -74,13 +39,80 @@ class SettingsManager extends ChangeNotifier {
   bool get hasHeaderLogo => _headerLogo.isNotEmpty;
   bool get hasFavicon => _browserFavicon.isNotEmpty;
 
-  // آیا ورود از طریق SSO فعال است؟ (برای نمایش دکمه در صفحه‌ی لاگین)
+  // ----- مدیریت فونت سفارشی سازمانی -----
+  String _customFontBase64 = '';
+  String _customFontName = ''; // ذخیره نام فایل فونت
+  
+  String get currentFontFamily => _customFontBase64.isNotEmpty ? 'CustomAdminFont' : 'Vazirmatn';
+  String get customFontName => _customFontName; // دسترسی به نام فونت
+
+  // متد داخلی بارگذاری فونت با پشتیبانی کامل از کروم و فایرفاکس
+  Future<void> _loadFontFromBase64(String base64Data) async {
+    try {
+      final bytes = base64Decode(base64Data);
+
+      // ۱. لود در موتور فلاتر
+      final fontLoader = FontLoader('CustomAdminFont');
+      fontLoader.addFont(Future.value(ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes)));
+      await fontLoader.load();
+
+      // ۲. تزریق به مرورگر برای فایرفاکس
+      _injectFontToBrowserCSS('CustomAdminFont', base64Data);
+
+    } catch (e) {
+      debugPrint('خطا در لود فونت اختصاصی: $e');
+    }
+  }
+
+  void _injectFontToBrowserCSS(String fontName, String base64Data) {
+    try {
+      final oldStyle = html.document.getElementById('custom-font-style');
+      if (oldStyle != null) oldStyle.remove();
+
+      final style = html.StyleElement();
+      style.id = 'custom-font-style';
+      style.innerHtml = '''
+        @font-face {
+          font-family: '$fontName';
+          src: url(data:font/ttf;base64,$base64Data) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+      ''';
+      html.document.head?.append(style);
+    } catch (e) {
+      debugPrint('خطا در تزریق فونت به HTML: $e');
+    }
+  }
+
+  // ذخیره فونت همراه با نام آن
+  Future<void> saveCustomFont(
+    String base64Data,
+    String fontName, // نام فونت اضافه شد
+    Future<void> Function(String key, String value) setSetting,
+  ) async {
+    _customFontBase64 = base64Data;
+    _customFontName = fontName;
+
+    // ذخیره در دیتابیس
+    await setSetting('custom_font', base64Data);
+    await setSetting('custom_font_name', fontName);
+    
+    // ذخیره در کش مرورگر
+    await _prefs?.setString('cached_custom_font', base64Data);
+    await _prefs?.setString('cached_custom_font_name', fontName);
+    
+    if (base64Data.isNotEmpty) {
+      await _loadFontFromBase64(base64Data);
+    }
+    notifyListeners();
+  }
+
   bool _ssoEnabled = false;
   bool get ssoEnabled => _ssoEnabled;
   bool _adEnabled = false;
   bool get adEnabled => _adEnabled;
 
-  // به‌روزرسانی محلی وضعیت روش‌های ورود (پس از ذخیره توسط ادمین)
   void setSsoEnabled(bool v) {
     _ssoEnabled = v;
     notifyListeners();
@@ -91,7 +123,6 @@ class SettingsManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // بارگذاری متن‌های ظاهری از endpoint عمومی سرور (بدون توکن)
   Future<void> loadPublicBranding() async {
     final res = await ApiClient.instance
         .get('/api/Settings/public-branding', withAuth: false)
@@ -103,6 +134,9 @@ class SettingsManager extends ChangeNotifier {
       final n = res['system_name'];
       final logo = res['header_logo'];
       final fav = res['browser_favicon'];
+      final cFont = res['custom_font']; 
+      final cFontName = res['custom_font_name']; // گرفتن نام فونت از سرور
+
       if (t != null && t.toString().isNotEmpty) _appTitle = t.toString();
       if (s != null && s.toString().isNotEmpty) _appSlogan = s.toString();
       if (b != null && b.toString().isNotEmpty) _browserTitle = b.toString();
@@ -111,11 +145,24 @@ class SettingsManager extends ChangeNotifier {
       if (fav != null) _browserFavicon = fav.toString();
       _ssoEnabled = (res['sso_enabled']?.toString() ?? 'false') == 'true';
       _adEnabled = (res['ad_enabled']?.toString() ?? 'false') == 'true';
+
+      if (cFontName != null) {
+        _customFontName = cFontName.toString();
+        await _prefs?.setString('cached_custom_font_name', _customFontName);
+      }
+
+      if (cFont != null && cFont.toString() != _customFontBase64) {
+        _customFontBase64 = cFont.toString();
+        await _prefs?.setString('cached_custom_font', _customFontBase64);
+        if (_customFontBase64.isNotEmpty) {
+          await _loadFontFromBase64(_customFontBase64);
+        }
+      }
+
       notifyListeners();
     }
   }
 
-  // بارگذاری متن‌های هدر از دیتابیس (از طریق repository)
   Future<void> loadHeaderTexts(
       Future<String?> Function(String key) getSetting) async {
     final t = await getSetting('app_title');
@@ -124,16 +171,32 @@ class SettingsManager extends ChangeNotifier {
     final n = await getSetting('system_name');
     final logo = await getSetting('header_logo');
     final fav = await getSetting('browser_favicon');
+    
     if (t != null && t.isNotEmpty) _appTitle = t;
     if (s != null && s.isNotEmpty) _appSlogan = s;
     if (b != null && b.isNotEmpty) _browserTitle = b;
     if (n != null && n.isNotEmpty) _systemName = n;
     if (logo != null) _headerLogo = logo;
     if (fav != null) _browserFavicon = fav;
+
+    final customFontName = await getSetting('custom_font_name');
+    if (customFontName != null) {
+      _customFontName = customFontName;
+      await _prefs?.setString('cached_custom_font_name', customFontName);
+    }
+
+    final customFont = await getSetting('custom_font');
+    if (customFont != null && customFont != _customFontBase64) {
+      _customFontBase64 = customFont;
+      await _prefs?.setString('cached_custom_font', customFont);
+      if (customFont.isNotEmpty) {
+        await _loadFontFromBase64(customFont);
+      }
+    }
+
     notifyListeners();
   }
 
-  // ذخیره‌ی لوگوی هدر (base64/dataURL). برای حذف، رشته‌ی خالی بده.
   Future<void> saveHeaderLogo(
     String dataUrl,
     Future<void> Function(String key, String value) setSetting,
@@ -143,7 +206,6 @@ class SettingsManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ذخیره‌ی آیکون تب مرورگر (favicon).
   Future<void> saveFavicon(
     String dataUrl,
     Future<void> Function(String key, String value) setSetting,
@@ -153,7 +215,6 @@ class SettingsManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ذخیره و به‌روزرسانی متن‌های هدر
   Future<void> saveHeaderTexts({
     required String title,
     required String slogan,
@@ -172,103 +233,57 @@ class SettingsManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============================================================
-  //  راه‌اندازی اولیه
-  //  این تابع را یک‌بار در شروع برنامه صدا می‌زنیم تا تنظیمات
-  //  ذخیره‌شده‌ی قبلی کاربر را از انبار بخواند.
-  // ============================================================
   Future<void> init() async {
-    // انبار ذخیره‌سازی را باز می‌کنیم.
     _prefs = await SharedPreferences.getInstance();
-
-    // مقدار ذخیره‌شده‌ی «حالت شب» را می‌خوانیم.
-    // اگر قبلاً چیزی ذخیره نشده باشد (null)، پیش‌فرض false می‌گذاریم.
     _isDarkMode = _prefs?.getBool('isDarkMode') ?? false;
-
-    // فصل ذخیره‌شده را می‌خوانیم. اگر چیزی نبود، پیش‌فرض 'winter'.
     _season = _prefs?.getString('season') ?? 'winter';
 
-    // به برنامه خبر می‌دهیم که تنظیمات آماده شد.
+    // خواندن نام و خود فونت از کش در لحظه لود
+    _customFontName = _prefs?.getString('cached_custom_font_name') ?? '';
+    final cachedFont = _prefs?.getString('cached_custom_font') ?? '';
+    if (cachedFont.isNotEmpty) {
+      _customFontBase64 = cachedFont;
+      await _loadFontFromBase64(cachedFont);
+    }
+
     notifyListeners();
   }
 
-  // ============================================================
-  //  عوض کردن حالت شب/روز
-  //  وقتی کاربر دکمه را می‌زند، این تابع صدا زده می‌شود.
-  // ============================================================
   Future<void> toggleDarkMode() async {
-    // مقدار را برعکس می‌کنیم (اگر شب بود، روز شود و برعکس).
     _isDarkMode = !_isDarkMode;
-
-    // مقدار جدید را در انبار ذخیره می‌کنیم تا دفعه‌ی بعد بماند.
     await _prefs?.setBool('isDarkMode', _isDarkMode);
-
-    // به همه‌ی صفحه‌ها خبر می‌دهیم که تم عوض شد، تا خودشان را به‌روز کنند.
     notifyListeners();
   }
 
-  // ============================================================
-  //  عوض کردن فصل
-  //  یک نام فصل می‌گیرد ('spring'، 'summer'، 'autumn'، 'winter')
-  //  و آن را ذخیره می‌کند.
-  // ============================================================
   Future<void> setSeason(String newSeason) async {
     _season = newSeason;
-    // فصل جدید را ذخیره می‌کنیم تا دفعه‌ی بعد بماند.
     await _prefs?.setString('season', _season);
-    // به برنامه خبر می‌دهیم فصل عوض شد.
     notifyListeners();
   }
 
-  // ============================================================
-  //  خروجی گرفتن از تنظیمات (Export)
-  //  همه‌ی تنظیمات را به یک متن (JSON) تبدیل می‌کند تا کاربر
-  //  بتواند آن را ذخیره/کپی کند و برای دیگری بفرستد.
-  // ============================================================
   String exportSettings() {
-    // یک «دفترچه» (Map) از همه‌ی تنظیمات می‌سازیم.
     final Map<String, dynamic> data = {
       'isDarkMode': _isDarkMode,
       'season': _season,
-      // بعداً تنظیمات دیگر هم اینجا اضافه می‌شوند، مثلاً:
-      // 'viewMode': _viewMode,
     };
-
-    // دفترچه را به یک متن مرتب JSON تبدیل می‌کنیم و برمی‌گردانیم.
-    // jsonEncode یعنی «این داده را به متن تبدیل کن».
     return const JsonEncoder.withIndent('  ').convert(data);
   }
 
-  // ============================================================
-  //  وارد کردن تنظیمات (Import)
-  //  یک متن JSON می‌گیرد، آن را می‌خواند و تنظیمات را اعمال می‌کند.
-  //  اگر متن درست بود true برمی‌گرداند، اگر خراب بود false.
-  // ============================================================
   Future<bool> importSettings(String jsonText) async {
     try {
-      // متن را به دفترچه تبدیل می‌کنیم.
-      // jsonDecode یعنی «این متن را به داده تبدیل کن».
-      final Map<String, dynamic> data =
-          jsonDecode(jsonText) as Map<String, dynamic>;
-
-      // اگر کلید «isDarkMode» در متن بود، مقدارش را می‌گذاریم.
+      final Map<String, dynamic> data = jsonDecode(jsonText) as Map<String, dynamic>;
       if (data.containsKey('isDarkMode')) {
         _isDarkMode = data['isDarkMode'] as bool;
         await _prefs?.setBool('isDarkMode', _isDarkMode);
       }
-
-      // اگر کلید «season» در متن بود، مقدارش را می‌گذاریم.
       if (data.containsKey('season')) {
         _season = data['season'] as String;
         await _prefs?.setString('season', _season);
       }
-
-      // به برنامه خبر می‌دهیم تنظیمات عوض شد.
       notifyListeners();
-      return true; // موفق بود
+      return true;
     } catch (e) {
-      // اگر متن خراب بود یا فرمتش غلط بود، اینجا می‌آییم.
-      return false; // ناموفق بود
+      return false;
     }
   }
 }
